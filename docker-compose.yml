@@ -1,0 +1,101 @@
+version: "3"
+services:
+  app:
+    build: docker/app
+    container_name: KingDavid
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./${PROJECT_DIR}:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/local.ini
+
+    networks:
+      app-network:
+        ipv4_address: 172.28.0.5
+    depends_on:
+      - db
+      - mongo
+
+  webserver:
+    image: nginx:alpine
+    container_name: webserver
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - ./${PROJECT_DIR}:/var/www
+      - ./docker/nginx/conf.d/:/etc/nginx/conf.d/
+      - ./docker/nginx/log:/var/log/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      app-network:
+        ipv4_address: 172.28.0.3
+
+  db:
+    image: mysql:${MYSQL_VERSION}
+    env_file: .env
+    container_name: db
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - ./docker/mysql/dbdata:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/my.cnf
+    ports:
+      - "${PORT_MYSQL}:3306"
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    networks:
+      app-network:
+        ipv4_address: 172.28.0.2
+  mongo:
+    image: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_TABLE}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    networks:
+      app-network:
+        ipv4_address: 172.28.0.5
+
+  mongo-express:
+    image: mongo-express
+    restart: unless-stopped
+    ports:
+      - ${PORT_MONGO}:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ADMINUSER}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ADMINPASSWORD}
+
+  pma:
+    image: phpmyadmin/phpmyadmin
+    env_file: .env
+    container_name: pma
+    ports:
+      - ${PORT_PMA}:80
+    environment:
+      - PMA_USER=${MYSQL_ROOT_USER}
+      - PMA_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    restart: unless-stopped
+    depends_on:
+      - db
+    networks:
+      app-network:
+        ipv4_address: 172.28.0.4
+
+  composer:
+    image: composer:latest
+    volumes:
+      - ./${PROJECT_DIR}:/var/www
+    working_dir: /var/www
+    command: composer install
+networks:
+  app-network:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
